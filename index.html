@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ระบบเกมล้างมือ 7 ขั้นตอน</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Kanit:wght@400;600;700;800&family=Sarabun:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --blue-deep:#1D4FA6;
+    --blue-mid:#2E7DE1;
+    --aqua:#37C6E8;
+    --foam:#F0F8FF;
+    --foam-2:#E4F2FE;
+    --ink:#0E2340;
+    --ink-soft:#4A6081;
+    --green:#22C177;
+    --amber:#F5A623;
+    --red:#E14B4B;
+    --white:#FFFFFF;
+    --radius-lg:28px;
+    --radius-md:18px;
+    --radius-sm:10px;
+    --shadow:0 12px 32px -12px rgba(20,60,120,0.25);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Sarabun',sans-serif;
+    background:
+      radial-gradient(circle at 15% -10%, #DCF0FF 0%, transparent 45%),
+      radial-gradient(circle at 105% 10%, #E8F4FF 0%, transparent 40%),
+      var(--foam);
+    color:var(--ink);
+    min-height:100vh;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    padding:20px 16px 60px;
+  }
+  h1,h2,h3,.display{font-family:'Kanit',sans-serif;}
+
+  /* ---------- Top bar ---------- */
+  .topbar{
+    width:100%;max-width:1100px;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;margin-bottom:22px;
+    background:linear-gradient(120deg,var(--blue-deep),var(--blue-mid));
+    border-radius:var(--radius-md);
+    box-shadow:var(--shadow);
+    color:var(--white);
+  }
+  .topbar .brand{display:flex;align-items:center;gap:12px;}
+  .topbar .brand svg{width:34px;height:34px;flex:none;}
+  .topbar h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.2px;}
+  .topbar .sub{font-size:12.5px;opacity:.85;margin-top:1px;}
+
+  .wrap{width:100%;max-width:1100px;}
+
+  /* ---------- Cards ---------- */
+  .card{
+    background:var(--white);
+    border-radius:var(--radius-lg);
+    box-shadow:var(--shadow);
+    padding:32px;
+  }
+
+  /* ---------- Setup screen ---------- */
+  #setupScreen .card{max-width:520px;margin:0 auto;}
+  #setupScreen h2{margin:0 0 4px;font-size:24px;color:var(--blue-deep);}
+  #setupScreen p.lead{color:var(--ink-soft);margin:0 0 26px;font-size:14.5px;}
+  .field{margin-bottom:16px;}
+  .field label{display:block;font-size:13.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;}
+  .field input,.field select{
+    width:100%;padding:12px 14px;border-radius:var(--radius-sm);
+    border:1.5px solid #D6E6F7;font-size:15px;font-family:'Sarabun',sans-serif;
+    background:var(--foam);color:var(--ink);outline:none;transition:.15s;
+  }
+  .field input:focus,.field select:focus{border-color:var(--blue-mid);background:var(--white);}
+  .btn{
+    display:inline-flex;align-items:center;justify-content:center;gap:8px;
+    border:none;border-radius:999px;padding:14px 26px;font-size:15.5px;font-weight:600;
+    font-family:'Kanit',sans-serif;cursor:pointer;transition:.15s transform,.15s box-shadow;
+    background:linear-gradient(120deg,var(--blue-mid),var(--aqua));color:#fff;
+    box-shadow:0 10px 22px -8px rgba(46,125,225,.55);
+  }
+  .btn:hover{transform:translateY(-1px);box-shadow:0 14px 26px -8px rgba(46,125,225,.65);}
+  .btn:active{transform:translateY(0);}
+  .btn.secondary{background:var(--foam-2);color:var(--blue-deep);box-shadow:none;}
+  .btn.ghost{background:transparent;color:var(--blue-deep);box-shadow:none;border:1.5px solid #C9DEF3;}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn-row{display:flex;gap:10px;margin-top:22px;}
+  .hint{font-size:12.5px;color:var(--ink-soft);margin-top:14px;line-height:1.6;}
+  .hint b{color:var(--blue-deep);}
+
+  /* ---------- Game screen ---------- */
+  #gameScreen{display:none;}
+  .game-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:22px;}
+  @media (max-width:860px){.game-grid{grid-template-columns:1fr;}}
+
+  .cam-card{padding:14px;position:relative;}
+  .cam-frame{
+    position:relative;border-radius:18px;overflow:hidden;
+    background:#0B1D33;aspect-ratio:4/3;
+  }
+  .cam-frame video, .cam-frame canvas{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    transform:scaleX(-1);object-fit:cover;
+  }
+  .cam-badge{
+    position:absolute;top:12px;left:12px;background:rgba(14,35,64,.55);
+    color:#fff;font-size:12px;padding:6px 12px;border-radius:999px;
+    backdrop-filter:blur(4px);display:flex;align-items:center;gap:6px;z-index:5;
+  }
+  .cam-badge .dot{width:7px;height:7px;border-radius:50%;background:var(--red);}
+  .cam-badge.ok .dot{background:var(--green);}
+  .cam-hint{
+    position:absolute;bottom:12px;left:12px;right:12px;z-index:5;
+    background:rgba(14,35,64,.6);color:#fff;font-size:13px;text-align:center;
+    padding:8px 10px;border-radius:12px;backdrop-filter:blur(4px);
+  }
+
+  .step-card{display:flex;flex-direction:column;}
+  .step-eyebrow{
+    font-size:12.5px;font-weight:700;color:var(--blue-mid);letter-spacing:.5px;
+    display:flex;align-items:center;justify-content:space-between;
+  }
+  .timer-ring{position:relative;width:54px;height:54px;flex:none;}
+  .timer-ring svg{transform:rotate(-90deg);}
+  .timer-ring .track{fill:none;stroke:#E4F0FB;stroke-width:5;}
+  .timer-ring .prog{fill:none;stroke:var(--aqua);stroke-width:5;stroke-linecap:round;transition:stroke-dashoffset .2s linear;}
+  .timer-ring .num{
+    position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+    font-family:'Kanit',sans-serif;font-weight:700;font-size:16px;color:var(--blue-deep);
+  }
+
+  .step-pose{
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    background:linear-gradient(160deg,var(--foam-2),var(--foam));
+    border-radius:20px;padding:22px 10px;margin:16px 0 14px;font-size:56px;
+  }
+  .step-pose .plus{font-size:22px;color:var(--blue-mid);}
+
+  .step-title{font-size:21px;font-weight:700;color:var(--ink);margin:0 0 6px;}
+  .step-desc{font-size:14px;color:var(--ink-soft);line-height:1.65;margin:0 0 18px;}
+
+  .detect-status{
+    display:flex;align-items:center;gap:10px;font-size:13.5px;font-weight:600;
+    padding:10px 14px;border-radius:12px;background:var(--foam-2);color:var(--blue-deep);
+    margin-bottom:14px;
+  }
+  .detect-status .pulse{width:9px;height:9px;border-radius:50%;background:var(--ink-soft);}
+  .detect-status.good{background:#E6FBF0;color:#0F8F52;}
+  .detect-status.good .pulse{background:var(--green);animation:pulse 1s infinite;}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(34,193,119,.5);}70%{box-shadow:0 0 0 9px rgba(34,193,119,0);}100%{box-shadow:0 0 0 0 rgba(34,193,119,0);}}
+
+  .droplets{display:flex;gap:8px;margin-top:auto;padding-top:16px;}
+  .drop{width:26px;height:32px;position:relative;flex:none;}
+  .drop svg{width:100%;height:100%;}
+  .drop .bg{fill:#E4F0FB;}
+  .drop .fill{fill:var(--aqua);transition:.3s;}
+  .drop.active .bg{fill:#DCEEFC;}
+  .drop.active svg{animation:bounce .5s ease;}
+  @keyframes bounce{0%{transform:scale(.7);}60%{transform:scale(1.15);}100%{transform:scale(1);}}
+
+  .step-actions{display:flex;gap:10px;margin-top:16px;}
+
+  /* ---------- Result screen ---------- */
+  #resultScreen{display:none;}
+  #resultScreen .card{max-width:640px;margin:0 auto;text-align:center;}
+  .result-badge{
+    width:88px;height:88px;border-radius:50%;margin:0 auto 18px;
+    background:linear-gradient(135deg,var(--green),#3FE0A0);
+    display:flex;align-items:center;justify-content:center;font-size:40px;color:#fff;
+    box-shadow:0 14px 30px -10px rgba(34,193,119,.55);
+  }
+  .result-badge.fail{background:linear-gradient(135deg,var(--amber),#F7C15C);box-shadow:0 14px 30px -10px rgba(245,166,35,.5);}
+  .result-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:22px 0;}
+  .stat{background:var(--foam-2);border-radius:16px;padding:16px 8px;}
+  .stat .v{font-family:'Kanit',sans-serif;font-size:24px;font-weight:700;color:var(--blue-deep);}
+  .stat .l{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .step-list{text-align:left;margin:18px 0;padding:0;list-style:none;}
+  .step-list li{
+    display:flex;align-items:center;gap:10px;padding:9px 4px;font-size:13.5px;
+    border-bottom:1px solid #EEF4FB;color:var(--ink-soft);
+  }
+  .step-list li b{color:var(--ink);font-weight:600;min-width:150px;}
+  .step-list .tag{margin-left:auto;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;}
+  .tag.auto{background:#E6FBF0;color:#0F8F52;}
+  .tag.manual{background:#FFF4E0;color:#B9740B;}
+  #saveStatus{font-size:13px;margin-top:12px;min-height:18px;color:var(--ink-soft);}
+  #saveStatus.ok{color:var(--green);font-weight:600;}
+  #saveStatus.err{color:var(--red);font-weight:600;}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M12 2c3 4.5 6 8.2 6 12a6 6 0 1 1-12 0c0-3.8 3-7.5 6-12Z" fill="#fff" opacity=".95"/></svg>
+    <div>
+      <h1>เกมล้างมือ 7 ขั้นตอน</h1>
+      <div class="sub">มาตรฐานสุขลักษณะส่วนบุคคล (WHO 7-Step Handwashing)</div>
+    </div>
+  </div>
+  <div class="sub" id="orgTag">ฝ่ายพัฒนาบุคลากร</div>
+</div>
+
+<div class="wrap">
+
+  <!-- ============ SETUP SCREEN ============ -->
+  <div id="setupScreen">
+    <div class="card">
+      <h2>เริ่มการฝึกล้างมือ</h2>
+      <p class="lead">กรอกข้อมูลพนักงาน แล้วอนุญาตให้ใช้กล้อง ระบบจะตรวจจับมือ 2 ข้างและจับเวลาให้อัตโนมัติ</p>
+
+      <div class="field">
+        <label>ชื่อ-นามสกุล</label>
+        <input type="text" id="empName" placeholder="เช่น สมหญิง ใจดี">
+      </div>
+      <div class="field">
+        <label>รหัสพนักงาน</label>
+        <input type="text" id="empId" placeholder="เช่น 10234">
+      </div>
+      <div class="field">
+        <label>แผนก / หน่วยงาน</label>
+        <input type="text" id="empDept" placeholder="เช่น สายการผลิต A">
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="startBtn">เริ่มเกม &amp; เปิดกล้อง</button>
+      </div>
+      <div class="hint" id="setupHint">
+        <b>หมายเหตุ:</b> ระบบตรวจจับท่าทางมือแบบ AI เพื่อการฝึกฝน ไม่ใช่การวิเคราะห์ระดับคลินิก
+        หากตรวจจับไม่ติดในบางขั้นตอน สามารถกด “ยืนยันขั้นตอนนี้ด้วยตนเอง” ได้
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ GAME SCREEN ============ -->
+  <div id="gameScreen">
+    <div class="game-grid">
+      <div class="card cam-card">
+        <div class="cam-frame">
+          <video id="video" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+          <div class="cam-badge" id="camBadge"><span class="dot"></span><span id="camBadgeText">กำลังเปิดกล้อง...</span></div>
+          <div class="cam-hint" id="camHint">ยกมือทั้งสองข้างให้อยู่ในกรอบกล้อง</div>
+        </div>
+      </div>
+
+      <div class="card step-card">
+        <div class="step-eyebrow">
+          <span id="stepEyebrow">ขั้นตอนที่ 1 / 7</span>
+          <div class="timer-ring">
+            <svg viewBox="0 0 54 54" width="54" height="54">
+              <circle class="track" cx="27" cy="27" r="23"></circle>
+              <circle class="prog" id="ringProg" cx="27" cy="27" r="23" stroke-dasharray="144.5" stroke-dashoffset="0"></circle>
+            </svg>
+            <div class="num" id="ringNum">5</div>
+          </div>
+        </div>
+
+        <div class="step-pose" id="stepPose">🤲</div>
+
+        <h3 class="step-title" id="stepTitle">ฝ่ามือถูฝ่ามือ</h3>
+        <p class="step-desc" id="stepDesc">ประกบฝ่ามือทั้งสองข้างเข้าหากัน แล้วถูวนไปมา</p>
+
+        <div class="detect-status" id="detectStatus">
+          <span class="pulse"></span>
+          <span id="detectText">กำลังรอมือเข้ากรอบ...</span>
+        </div>
+
+        <div class="droplets" id="droplets"></div>
+
+        <div class="step-actions">
+          <button class="btn secondary" id="manualBtn">ยืนยันขั้นตอนนี้ด้วยตนเอง</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RESULT SCREEN ============ -->
+  <div id="resultScreen">
+    <div class="card">
+      <div class="result-badge" id="resultBadge">✓</div>
+      <h2 id="resultTitle" style="margin:0 0 6px;font-size:24px;">ล้างมือครบ 7 ขั้นตอน!</h2>
+      <p class="lead" id="resultSub" style="color:var(--ink-soft);margin:0;">เยี่ยมมาก ทำได้ตามมาตรฐาน WHO</p>
+
+      <div class="result-stats">
+        <div class="stat"><div class="v" id="statTime">--</div><div class="l">เวลารวม (วินาที)</div></div>
+        <div class="stat"><div class="v" id="statAuto">--</div><div class="l">ตรวจจับอัตโนมัติ</div></div>
+        <div class="stat"><div class="v" id="statScore">--</div><div class="l">คะแนน</div></div>
+      </div>
+
+      <ul class="step-list" id="stepList"></ul>
+
+      <div class="btn-row" style="justify-content:center;">
+        <button class="btn" id="saveBtn">บันทึกผลลง Google Sheet</button>
+        <button class="btn ghost" id="retryBtn">เล่นอีกครั้ง</button>
+      </div>
+      <div id="saveStatus"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- MediaPipe Hands -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+<script>
+/* =========================================================
+   CONFIG — วางลิงก์ Web App ของ Google Apps Script ที่นี่
+   หลัง Deploy Code.gs เป็น Web App แล้ว ให้คัดลอก URL มาวางแทนค่าด้านล่าง
+   ========================================================= */
+const CONFIG = {
+  WEBAPP_URL: "https://script.google.com/macros/s/AKfycbzw_jPWSTWsryPPGa64YFTANB0vFmG076qmxrGZF06oGW9ko99SI0HBcLpDILjDfmAy/exec"
+};
+
+/* =========================================================
+   STEP DEFINITIONS (WHO 7-Step Handwashing)
+   ========================================================= */
+const STEPS = [
+  { title:"ฝ่ามือถูฝ่ามือ", desc:"ประกบฝ่ามือทั้งสองข้างเข้าหากัน แล้วถูวนไปมา", pose:"🤲", duration:5, type:"palmToPalm" },
+  { title:"ฝ่ามือถูหลังมือ (สลับข้าง)", desc:"นำฝ่ามือขวาถูหลังมือซ้าย สอดนิ้วถู แล้วสลับข้าง", pose:"🙌", duration:6, type:"palmToBack" },
+  { title:"ฝ่ามือถูฝ่ามือ สอดนิ้วถู", desc:"ประกบฝ่ามือ สอดนิ้วมือทั้งสองข้างเข้าหากัน แล้วถูไปมา", pose:"🤝", duration:6, type:"interlaced" },
+  { title:"หลังนิ้วมือถูฝ่ามือ", desc:"งอนิ้วมือ ใช้หลังนิ้วถูฝ่ามืออีกข้าง สลับกันทั้งสองข้าง", pose:"✊➡️🖐️", duration:6, type:"backOfFingers" },
+  { title:"ถูนิ้วหัวแม่มือหมุนรอบ", desc:"กำนิ้วหัวแม่มือขวาด้วยฝ่ามือซ้าย ถูหมุนรอบ แล้วสลับข้าง", pose:"👍🤛", duration:6, type:"thumbRotate" },
+  { title:"ถูปลายนิ้วหมุนบนฝ่ามือ", desc:"รวมปลายนิ้วมือขวา ถูหมุนวนบนฝ่ามือซ้าย แล้วสลับข้าง", pose:"🤏✋", duration:6, type:"fingertipRotate" },
+  { title:"ล้างข้อมือและล้างน้ำออก", desc:"ถูรอบข้อมือทั้งสองข้าง จากนั้นล้างสบู่ออกด้วยน้ำสะอาด", pose:"💧🖐️💧", duration:5, type:"rinse" },
+];
+
+/* =========================================================
+   STATE
+   ========================================================= */
+let hands, camera;
+let currentStep = 0;
+let stepStartTime = 0;
+let stepGoodMs = 0;
+let stepResults = []; // {title, durationMs, method}
+let sessionStartTime = 0;
+let lastFrameTime = 0;
+let prevLandmarks = null; // for motion energy
+let landmarksNow = [];
+let gameRunning = false;
+
+const REQUIRED_GOOD_MS = 3200; // sustained "good" contact+motion time needed per step
+
+/* =========================================================
+   DOM refs
+   ========================================================= */
+const el = id => document.getElementById(id);
+const setupScreen = el('setupScreen'), gameScreen = el('gameScreen'), resultScreen = el('resultScreen');
+const video = el('video'), overlay = el('overlay');
+const octx = overlay.getContext('2d');
+
+/* =========================================================
+   Droplet progress UI
+   ========================================================= */
+function buildDroplets(){
+  const wrap = el('droplets');
+  wrap.innerHTML = '';
+  STEPS.forEach((_, i) => {
+    const d = document.createElement('div');
+    d.className = 'drop';
+    d.id = 'drop'+i;
+    d.innerHTML = `<svg viewBox="0 0 26 32"><path class="bg" d="M13 1c5 7.5 10 13.6 10 19.5A10 10 0 1 1 3 20.5C3 14.6 8 8.5 13 1Z"/><path class="fill" d="M13 1c5 7.5 10 13.6 10 19.5A10 10 0 1 1 3 20.5C3 14.6 8 8.5 13 1Z" style="clip-path:inset(100% 0 0 0)"/></svg>`;
+    wrap.appendChild(d);
+  });
+}
+function updateDroplets(){
+  STEPS.forEach((_, i) => {
+    const d = el('drop'+i);
+    if(!d) return;
+    d.classList.toggle('active', i===currentStep);
+    const fillPath = d.querySelector('.fill');
+    if(i < currentStep){ fillPath.style.clipPath = 'inset(0 0 0 0)'; }
+    else if(i === currentStep){
+      const pct = Math.min(1, stepGoodMs / REQUIRED_GOOD_MS);
+      fillPath.style.clipPath = `inset(${(1-pct)*100}% 0 0 0)`;
+    } else { fillPath.style.clipPath = 'inset(100% 0 0 0)'; }
+  });
+}
+
+/* =========================================================
+   Setup -> Start
+   ========================================================= */
+el('startBtn').addEventListener('click', async () => {
+  if(!el('empName').value.trim() || !el('empId').value.trim()){
+    el('setupHint').innerHTML = '<b style="color:#E14B4B">กรุณากรอกชื่อและรหัสพนักงานก่อนเริ่ม</b>';
+    return;
+  }
+  setupScreen.style.display = 'none';
+  gameScreen.style.display = 'block';
+  buildDroplets();
+  await initCamera();
+});
+
+/* =========================================================
+   Camera + MediaPipe init
+   ========================================================= */
+async function initCamera(){
+  hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+  hands.setOptions({
+    maxNumHands: 2,
+    modelComplexity: 1,
+    minDetectionConfidence: 0.6,
+    minTrackingConfidence: 0.6
+  });
+  hands.onResults(onResults);
+
+  camera = new Camera(video, {
+    onFrame: async () => { await hands.send({image: video}); },
+    width: 640, height: 480
+  });
+  await camera.start();
+
+  el('camBadge').classList.add('ok');
+  el('camBadgeText').textContent = 'กล้องพร้อมใช้งาน';
+
+  sessionStartTime = performance.now();
+  startStep(0);
+  gameRunning = true;
+}
+
+function resizeOverlay(){
+  overlay.width = overlay.clientWidth;
+  overlay.height = overlay.clientHeight;
+}
+
+/* =========================================================
+   Landmark geometry helpers
+   ========================================================= */
+function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y, (a.z-b.z)||0); }
+function palmCenter(lm){
+  const ids=[0,5,9,13,17];
+  let x=0,y=0,z=0;
+  ids.forEach(i=>{x+=lm[i].x;y+=lm[i].y;z+=lm[i].z;});
+  return {x:x/5,y:y/5,z:z/5};
+}
+const FINGERTIPS=[4,8,12,16,20];
+const FINGER_MCP=[2,5,9,13,17];
+function fingertipProximity(lmA,lmB){
+  let total=0;
+  FINGERTIPS.forEach(i=>{
+    let minD=Infinity;
+    FINGERTIPS.forEach(j=>{ const d=dist(lmA[i],lmB[j]); if(d<minD)minD=d; });
+    total+=minD;
+  });
+  return total/FINGERTIPS.length;
+}
+function fingerCurl(lm){
+  // avg ratio tip-to-mcp distance vs pip-to-mcp -> smaller = more curled
+  let total=0,n=0;
+  for(let f=1;f<5;f++){
+    const tip=lm[FINGERTIPS[f]], mcp=lm[FINGER_MCP[f]];
+    total += dist(tip, lm[0]);
+    n++;
+  }
+  return total/n; // larger = more extended, smaller = curled
+}
+function motionEnergy(curLm, prevLm){
+  if(!prevLm) return 0;
+  let total=0;
+  for(let i=0;i<curLm.length;i++){
+    total += dist(curLm[i], prevLm[i]);
+  }
+  return total/curLm.length;
+}
+
+/* Classify current frame against the active step's target pose.
+   Returns true if features are "good enough" to count toward progress. */
+function evaluateStep(type, handsLm, motion){
+  if(handsLm.length < 2) return false;
+  const [A,B] = handsLm;
+  const pcA = palmCenter(A), pcB = palmCenter(B);
+  const palmDist = dist(pcA,pcB);
+  const tipProx = fingertipProximity(A,B);
+  const curlA = fingerCurl(A), curlB = fingerCurl(B);
+  const moving = motion > 0.004; // rubbing motion threshold
+
+  const handsClose = palmDist < 0.22;
+  const handsTouching = palmDist < 0.14;
+
+  switch(type){
+    case 'palmToPalm':
+      return handsTouching && moving;
+    case 'palmToBack':
+      return handsClose && moving && tipProx < 0.14;
+    case 'interlaced':
+      return handsTouching && tipProx < 0.09 && moving;
+    case 'backOfFingers':
+      return handsClose && moving && (curlA < 0.7 || curlB < 0.7 || tipProx < 0.12);
+    case 'thumbRotate': {
+      const thumbA = A[4], thumbB = B[4];
+      const thumbNearPalm = dist(thumbA, pcB) < 0.13 || dist(thumbB, pcA) < 0.13;
+      return thumbNearPalm && moving;
+    }
+    case 'fingertipRotate':
+      return handsClose && tipProx < 0.15 && moving;
+    case 'rinse':
+      return handsClose && moving;
+    default:
+      return handsClose && moving;
+  }
+}
+
+/* =========================================================
+   Main results callback (runs every frame)
+   ========================================================= */
+function onResults(results){
+  resizeOverlay();
+  octx.save();
+  octx.clearRect(0,0,overlay.width,overlay.height);
+
+  const now = performance.now();
+  const dt = lastFrameTime ? (now-lastFrameTime) : 16;
+  lastFrameTime = now;
+
+  const handsLm = results.multiHandLandmarks || [];
+  const twoHands = handsLm.length >= 2;
+
+  // draw skeleton
+  handsLm.forEach(lm=>{
+    if(window.drawConnectors && window.HAND_CONNECTIONS){
+      drawConnectors(octx, lm, HAND_CONNECTIONS, {color:'#37C6E8', lineWidth:3});
+      drawLandmarks(octx, lm, {color:'#1D4FA6', radius:3});
+    }
+  });
+  octx.restore();
+
+  el('camHint').style.display = twoHands ? 'none' : 'block';
+
+  if(!gameRunning){ return; }
+
+  let motion = 0;
+  if(twoHands && prevLandmarks && prevLandmarks.length>=2){
+    motion = (motionEnergy(handsLm[0], prevLandmarks[0]) + motionEnergy(handsLm[1], prevLandmarks[1]))/2;
+  }
+  prevLandmarks = twoHands ? handsLm.map(l=>l.map(p=>({x:p.x,y:p.y,z:p.z}))) : prevLandmarks;
+
+  const stepType = STEPS[currentStep].type;
+  const good = twoHands ? evaluateStep(stepType, handsLm, motion) : false;
+
+  const statusBox = el('detectStatus');
+  if(good){
+    stepGoodMs += dt;
+    statusBox.classList.add('good');
+    el('detectText').textContent = 'ตรวจจับได้ดี — ทำต่อไป';
+  } else {
+    statusBox.classList.remove('good');
+    el('detectText').textContent = twoHands ? 'ปรับท่ามือให้ตรงกับตัวอย่าง' : 'กรุณายกมือทั้งสองข้างเข้ากรอบ';
+  }
+
+  updateTimerRing();
+  updateDroplets();
+
+  if(stepGoodMs >= REQUIRED_GOOD_MS){
+    completeStep('auto');
+  }
+}
+
+/* =========================================================
+   Step lifecycle
+   ========================================================= */
+function startStep(i){
+  currentStep = i;
+  stepGoodMs = 0;
+  stepStartTime = performance.now();
+  const s = STEPS[i];
+  el('stepEyebrow').textContent = `ขั้นตอนที่ ${i+1} / ${STEPS.length}`;
+  el('stepPose').textContent = s.pose;
+  el('stepTitle').textContent = s.title;
+  el('stepDesc').textContent = s.desc;
+  updateDroplets();
+}
+
+function updateTimerRing(){
+  const s = STEPS[currentStep];
+  const pct = Math.min(1, stepGoodMs / REQUIRED_GOOD_MS);
+  const circumference = 144.5;
+  el('ringProg').setAttribute('stroke-dashoffset', circumference * (1-pct));
+  const secsLeft = Math.max(0, Math.ceil((REQUIRED_GOOD_MS - stepGoodMs)/1000));
+  el('ringNum').textContent = secsLeft;
+}
+
+function completeStep(method){
+  const elapsedMs = performance.now() - stepStartTime;
+  stepResults.push({ title: STEPS[currentStep].title, durationMs: Math.round(elapsedMs), method });
+
+  if(currentStep < STEPS.length-1){
+    startStep(currentStep+1);
+  } else {
+    finishGame();
+  }
+}
+
+el('manualBtn').addEventListener('click', () => {
+  if(!gameRunning) return;
+  completeStep('manual');
+});
+
+/* =========================================================
+   Finish game -> results
+   ========================================================= */
+function finishGame(){
+  gameRunning = false;
+  if(camera) camera.stop();
+
+  gameScreen.style.display = 'none';
+  resultScreen.style.display = 'block';
+
+  const totalMs = performance.now() - sessionStartTime;
+  const totalSec = Math.round(totalMs/1000);
+  const autoCount = stepResults.filter(r=>r.method==='auto').length;
+  const manualCount = stepResults.filter(r=>r.method==='manual').length;
+  const score = Math.round((autoCount / STEPS.length) * 100);
+  const passed = score >= 60; // pass threshold: majority auto-detected
+
+  el('resultBadge').textContent = passed ? '✓' : '!';
+  el('resultBadge').classList.toggle('fail', !passed);
+  el('resultTitle').textContent = passed ? 'ล้างมือครบ 7 ขั้นตอน!' : 'ทำครบแล้ว ลองฝึกอีกครั้งเพื่อความแม่นยำ';
+  el('resultSub').textContent = passed ? 'เยี่ยมมาก ทำได้ตามมาตรฐาน WHO' : 'บางขั้นตอนใช้การยืนยันด้วยตนเอง ลองฝึกให้คล่องขึ้น';
+
+  el('statTime').textContent = totalSec;
+  el('statAuto').textContent = `${autoCount}/${STEPS.length}`;
+  el('statScore').textContent = score;
+
+  const list = el('stepList');
+  list.innerHTML = '';
+  stepResults.forEach((r,i)=>{
+    const li = document.createElement('li');
+    li.innerHTML = `<b>${i+1}. ${r.title}</b><span>${(r.durationMs/1000).toFixed(1)} วิ</span>
+      <span class="tag ${r.method}">${r.method==='auto'?'ตรวจจับอัตโนมัติ':'ยืนยันเอง'}</span>`;
+    list.appendChild(li);
+  });
+
+  window._lastResult = {
+    timestamp: new Date().toISOString(),
+    empId: el('empId').value.trim(),
+    empName: el('empName').value.trim(),
+    empDept: el('empDept').value.trim(),
+    totalSeconds: totalSec,
+    score, passed,
+    autoCount, manualCount,
+    steps: stepResults
+  };
+}
+
+/* =========================================================
+   Save to Google Sheet
+   ========================================================= */
+el('saveBtn').addEventListener('click', async () => {
+  const statusBox = el('saveStatus');
+  if(!CONFIG.WEBAPP_URL || CONFIG.WEBAPP_URL.includes('PASTE_YOUR')){
+    statusBox.textContent = 'ยังไม่ได้ตั้งค่า Web App URL ในไฟล์ index.html (ดูใน Code.gs)';
+    statusBox.className = 'err';
+    return;
+  }
+  statusBox.textContent = 'กำลังบันทึก...';
+  statusBox.className = '';
+  el('saveBtn').disabled = true;
+  try{
+    const res = await fetch(CONFIG.WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // avoids CORS preflight on Apps Script
+      body: JSON.stringify(window._lastResult)
+    });
+    const data = await res.json();
+    if(data.status === 'success'){
+      statusBox.textContent = 'บันทึกผลสำเร็จ';
+      statusBox.className = 'ok';
+    } else {
+      throw new Error(data.message || 'unknown error');
+    }
+  } catch(err){
+    statusBox.textContent = 'บันทึกไม่สำเร็จ: ' + err.message;
+    statusBox.className = 'err';
+  } finally {
+    el('saveBtn').disabled = false;
+  }
+});
+
+el('retryBtn').addEventListener('click', () => {
+  stepResults = [];
+  prevLandmarks = null;
+  resultScreen.style.display = 'none';
+  setupScreen.style.display = 'block';
+});
+</script>
+</body>
+</html>
