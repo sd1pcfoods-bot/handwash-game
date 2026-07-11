@@ -84,7 +84,7 @@
 
   .hud{
     position:absolute;top:14px;left:14px;right:14px;z-index:10;
-    display:flex;align-items:center;justify-content:space-between;gap:8px;pointer-events:none;
+    display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;pointer-events:none;
   }
   .pill{
     background:rgba(14,35,64,.55);backdrop-filter:blur(6px);color:#fff;border-radius:999px;
@@ -114,6 +114,11 @@
     opacity:0;pointer-events:none;transition:opacity .15s;
   }
   .damage-flash.show{opacity:1;}
+  .contam-flash{
+    position:absolute;inset:0;z-index:11;background:radial-gradient(circle, rgba(155,92,220,0) 40%, rgba(155,92,220,.45) 100%);
+    opacity:0;pointer-events:none;transition:opacity .15s;
+  }
+  .contam-flash.show{opacity:1;}
 
   .cam-status{
     position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:10;
@@ -145,6 +150,7 @@
       <ul class="rules">
         <li><span class="ico">🦠</span> เชื้อโรคร่วงลงมาจากด้านบน — แตะด้วยมือให้แตก</li>
         <li><span class="ico">☣️</span> เชื้อโรคตัวใหญ่ต้องแตะ 2 ครั้งถึงจะตาย</li>
+        <li><span class="ico">🍃</span> <b style="color:var(--blue-deep)">ระวัง!</b> ของดี (โพรไบโอติก/วิตามิน) ห้ามแตะ — แตะโดนจะปนเปื้อน เสียคะแนน</li>
         <li><span class="ico">❤️</span> ปล่อยเชื้อโรคตกถึงพื้นเสีย 1 ชีวิต (มี 3 ชีวิต)</li>
         <li><span class="ico">⏱️</span> เล่นทั้งหมด 60 วินาที ความเร็วเพิ่มขึ้นทุกด่าน</li>
       </ul>
@@ -169,6 +175,8 @@
       <div class="stat"><div class="v" id="statLevel">1</div><div class="l">ด่านที่ไปถึง</div></div>
       <div class="stat"><div class="v" id="statKilled">0</div><div class="l">เชื้อโรคที่กำจัดได้</div></div>
       <div class="stat"><div class="v" id="statAcc">0%</div><div class="l">ความแม่นยำ</div></div>
+      <div class="stat"><div class="v" id="statContam">0</div><div class="l">ครั้งที่ปนเปื้อน</div></div>
+      <div class="stat"><div class="v" id="statSaved">0</div><div class="l">ของดีที่รักษาไว้ได้</div></div>
     </div>
 
     <button class="btn" id="saveBtn">บันทึกผลลง Google Sheet</button>
@@ -182,6 +190,7 @@
   <video id="video" autoplay playsinline muted></video>
   <canvas id="gcanvas"></canvas>
   <div class="damage-flash" id="damageFlash"></div>
+  <div class="contam-flash" id="contamFlash"></div>
   <div class="level-banner" id="levelBanner">ด่าน 2!</div>
   <div class="center-msg" id="centerMsg" style="display:none;">
     <div class="big" id="centerBig">3</div>
@@ -192,6 +201,7 @@
     <div class="pill"><span class="lbl">เวลา&nbsp;</span><span id="hudTime">60</span></div>
     <div class="pill"><span class="lbl">คะแนน&nbsp;</span><span id="hudScore">0</span></div>
     <div class="pill"><span class="lbl">ด่าน&nbsp;</span><span id="hudLevel">1</span></div>
+    <div class="pill"><span class="lbl">⚠️ปนเปื้อน&nbsp;</span><span id="hudContam">0</span></div>
   </div>
   <div class="cam-status" id="camStatus">กำลังเปิดกล้อง...</div>
 </div>
@@ -212,11 +222,14 @@ const ROUND_SECONDS = 60;
 const MAX_LIVES = 3;
 const LEVEL_UP_EVERY_KILLS = 8;
 const MAX_LEVEL = 6;
-const HIT_RADIUS_BONUS = 20; // extra forgiveness added to germ radius for hit detection
+const HIT_RADIUS_BONUS = 20; // extra forgiveness added to entity radius for hit detection
+const GOOD_ITEM_CHANCE = 0.25; // chance a spawned entity is a "good" one that must NOT be touched
+const CONTAMINATE_PENALTY = 15;
+const SAVED_BONUS = 3;
 
 function levelConfig(level){
   return {
-    fallSpeed: 95 + (level-1) * 32,             // px/sec at a 700px-tall reference screen
+    fallSpeed: 95 + (level-1) * 32,             // px/sec at a 700px-tall reference screen (terminal speed)
     spawnIntervalMs: Math.max(420, 1100 - (level-1) * 120),
     toughChance: Math.min(0.4, (level-1) * 0.08)
   };
@@ -237,7 +250,7 @@ let hands, camera;
 let handPoints = [];      // latest hand cursor points, in canvas pixel space
 let germs = [];
 let popups = [];
-let score=0, level=1, lives=MAX_LIVES, killed=0, missed=0;
+let score=0, level=1, lives=MAX_LIVES, killed=0, missed=0, contaminated=0, saved=0;
 let running=false;
 let roundStartTime=0, lastSpawnTime=0, spawnIntervalMs=1100;
 let lastLoopTs=0;
@@ -265,7 +278,7 @@ el('startBtn').addEventListener('click', async () => {
 });
 
 function resetState(){
-  score=0; level=1; lives=MAX_LIVES; killed=0; missed=0;
+  score=0; level=1; lives=MAX_LIVES; killed=0; missed=0; contaminated=0; saved=0;
   germs=[]; popups=[]; handPoints=[];
   spawnIntervalMs = levelConfig(1).spawnIntervalMs;
   updateHUD(ROUND_SECONDS);
@@ -337,18 +350,32 @@ function startCountdown(){
 /* =========================================================
    Germ spawning
    ========================================================= */
-const NORMAL_EMOJIS = ['🦠','🧫'];
-function spawnGerm(){
+const GERM_EMOJIS = ['🦠','🧫'];
+const GOOD_EMOJIS = ['🍃','💊'];
+
+function spawnGerm(ts){
   const cfg = levelConfig(level);
-  const tough = Math.random() < cfg.toughChance;
   const scaleH = canvas.height / 700;
+  const isGood = Math.random() < GOOD_ITEM_CHANCE;
+  const tough = !isGood && Math.random() < cfg.toughChance;
+  const baseX = Math.random() * (canvas.width - 80) + 40;
+  const terminalSpeed = cfg.fallSpeed * scaleH * (tough ? 0.85 : 1);
+
   germs.push({
     id: Math.random().toString(36).slice(2),
-    x: Math.random() * (canvas.width - 80) + 40,
-    y: -40,
+    type: isGood ? 'good' : 'germ',
+    baseX, x: baseX, y: -40,
     r: (tough ? 34 : 26),
-    speed: cfg.fallSpeed * scaleH * (tough ? 0.85 : 1),
-    emoji: tough ? '☣️' : NORMAL_EMOJIS[Math.floor(Math.random()*NORMAL_EMOJIS.length)],
+    vy: terminalSpeed * 0.35,          // starts slower...
+    maxVy: terminalSpeed,              // ...and eases up to full speed (smoother than constant speed)
+    gravity: terminalSpeed * 1.7,      // px/sec^2 — reaches near max speed in ~0.4-0.6s
+    swayAmp: 12 + Math.random()*12,
+    swayFreq: 1.1 + Math.random()*0.9,
+    swayPhase: Math.random()*Math.PI*2,
+    bornAt: ts,
+    scaleIn: 0,
+    emoji: isGood ? GOOD_EMOJIS[Math.floor(Math.random()*GOOD_EMOJIS.length)]
+                  : (tough ? '☣️' : GERM_EMOJIS[Math.floor(Math.random()*GERM_EMOJIS.length)]),
     hp: tough ? 2 : 1,
     maxHp: tough ? 2 : 1,
     points: tough ? 25 : 10,
@@ -373,20 +400,26 @@ function loop(ts){
 
 function update(dt, ts){
   if(ts - lastSpawnTime > spawnIntervalMs){
-    spawnGerm();
+    spawnGerm(ts);
     lastSpawnTime = ts;
   }
 
   germs.forEach(g => {
     if(g.popped){ g.popTimer += dt; return; }
-    g.y += g.speed * dt;
+
+    // ease speed up toward terminal velocity (smoother than a constant fall speed)
+    g.vy = Math.min(g.maxVy, g.vy + g.gravity*dt);
+    g.y += g.vy*dt;
+    g.scaleIn = Math.min(1, g.scaleIn + dt/0.18);
+    const swayT = (ts - g.bornAt)/1000;
+    g.x = g.baseX + Math.sin(swayT*g.swayFreq + g.swayPhase) * g.swayAmp;
 
     for(const p of handPoints){
       const d = Math.hypot(p.x-g.x, p.y-g.y);
-      if(d < g.r + HIT_RADIUS_BONUS){ hitGerm(g); break; }
+      if(d < g.r + HIT_RADIUS_BONUS){ hitEntity(g); break; }
     }
     if(!g.popped && g.y - g.r > canvas.height){
-      missGerm(g);
+      missEntity(g);
     }
   });
   germs = germs.filter(g => !g.removed && !(g.popped && g.popTimer > 0.28));
@@ -410,7 +443,15 @@ function update(dt, ts){
   }
 }
 
-function hitGerm(g){
+function hitEntity(g){
+  if(g.type === 'good'){
+    g.popped = true; g.popTimer = 0;
+    contaminated++;
+    score = Math.max(0, score - CONTAMINATE_PENALTY);
+    popups.push({x:g.x, y:g.y, text:'-'+CONTAMINATE_PENALTY+' ปนเปื้อน!', life:0.7, color:'#E4C6FF'});
+    flashContaminate();
+    return;
+  }
   g.hp -= 1;
   if(g.hp <= 0){
     g.popped = true; g.popTimer = 0;
@@ -421,8 +462,14 @@ function hitGerm(g){
   }
 }
 
-function missGerm(g){
+function missEntity(g){
   g.removed = true;
+  if(g.type === 'good'){
+    saved++;
+    score += SAVED_BONUS;
+    popups.push({x:g.x, y:canvas.height-30, text:'+'+SAVED_BONUS+' ปลอดภัย', life:0.6, color:'#B7F7D8'});
+    return;
+  }
   lives = Math.max(0, lives-1);
   missed++;
   flashDamage();
@@ -430,6 +477,12 @@ function missGerm(g){
 
 function flashDamage(){
   const f = el('damageFlash');
+  f.classList.add('show');
+  setTimeout(() => f.classList.remove('show'), 220);
+}
+
+function flashContaminate(){
+  const f = el('contamFlash');
   f.classList.add('show');
   setTimeout(() => f.classList.remove('show'), 220);
 }
@@ -446,6 +499,7 @@ function updateHUD(timeLeft){
   el('hudScore').textContent = score;
   el('hudLevel').textContent = level;
   el('hudLives').textContent = '❤️'.repeat(lives) + '🖤'.repeat(MAX_LIVES-lives);
+  el('hudContam').textContent = contaminated;
 }
 
 /* =========================================================
@@ -456,10 +510,10 @@ function draw(){
 
   germs.forEach(g => {
     ctx.save();
-    let alpha = 1, scale = 1;
+    let alpha = 1, scale = g.scaleIn;
     if(g.popped){
       const t = Math.min(1, g.popTimer/0.28);
-      scale = 1 + t*0.9;
+      scale = g.scaleIn * (1 + t*0.9);
       alpha = 1 - t;
     }
     ctx.globalAlpha = alpha;
@@ -511,18 +565,20 @@ function endRound(){
   el('statLevel').textContent = level;
   el('statKilled').textContent = killed;
   el('statAcc').textContent = accuracy + '%';
+  el('statContam').textContent = contaminated;
+  el('statSaved').textContent = saved;
 
   const won = lives > 0;
   el('resultBadge').textContent = won ? '🏆' : '🩹';
   el('resultTitle').textContent = won ? 'เยี่ยมมาก! หมดเวลาแล้ว' : 'เชื้อโรคหลุดรอดไปเยอะเลย ลองใหม่อีกครั้ง!';
-  el('resultSub').textContent = `กำจัดเชื้อโรคได้ ${killed} ตัว พลาดไป ${missed} ตัว`;
+  el('resultSub').textContent = `กำจัดเชื้อโรคได้ ${killed} ตัว พลาดไป ${missed} ตัว • ปนเปื้อน ${contaminated} ครั้ง`;
 
   window._lastResult = {
     timestamp: new Date().toISOString(),
     empId: el('empId').value.trim(),
     empName: el('empName').value.trim(),
     empDept: el('empDept').value.trim(),
-    score, level, killed, missed, accuracy,
+    score, level, killed, missed, accuracy, contaminated, saved,
     durationSeconds: Math.min(ROUND_SECONDS, Math.round((performance.now()-roundStartTime)/1000))
   };
 }
