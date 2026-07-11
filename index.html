@@ -233,7 +233,18 @@
       </div>
       <div class="hint" id="setupHint">
         <b>หมายเหตุ:</b> ระบบตรวจจับท่าทางมือแบบ AI เพื่อการฝึกฝน ไม่ใช่การวิเคราะห์ระดับคลินิก
-        หากตรวจจับไม่ติดในบางขั้นตอน สามารถกด “ยืนยันขั้นตอนนี้ด้วยตนเอง” ได้
+        หากตรวจจับไม่ติดในบางขั้นตอน สามารถกด "ยืนยันขั้นตอนนี้ด้วยตนเอง" ได้
+      </div>
+
+      <div style="text-align:center;margin-top:18px;border-top:1px solid #EEF4FB;padding-top:16px;">
+        <button class="btn ghost" id="adminModeBtn" style="font-size:13px;padding:9px 18px;">⚙ ตั้งค่ามาตรฐานท่ามือ (ผู้ดูแลระบบ)</button>
+      </div>
+      <div class="field" id="adminPwField" style="display:none;margin-top:14px;">
+        <label>รหัสผ่านผู้ดูแลระบบ</label>
+        <input type="password" id="adminPwInput" placeholder="กรอกรหัสผ่าน">
+        <div class="btn-row" style="margin-top:10px;">
+          <button class="btn secondary" id="adminPwSubmit">เข้าสู่โหมดตั้งค่ามาตรฐาน</button>
+        </div>
       </div>
     </div>
   </div>
@@ -276,6 +287,7 @@
 
         <div class="step-actions">
           <button class="btn secondary" id="manualBtn">ยืนยันขั้นตอนนี้ด้วยตนเอง</button>
+          <button class="btn" id="calibCaptureBtn" style="display:none;">เริ่มจับท่านี้ (นับถอยหลัง 3 วิ)</button>
         </div>
       </div>
     </div>
@@ -317,20 +329,28 @@
    หลัง Deploy Code.gs เป็น Web App แล้ว ให้คัดลอก URL มาวางแทนค่าด้านล่าง
    ========================================================= */
 const CONFIG = {
-  WEBAPP_URL: "https://script.google.com/macros/s/AKfycbzw_jPWSTWsryPPGa64YFTANB0vFmG076qmxrGZF06oGW9ko99SI0HBcLpDILjDfmAy/exec"
+  WEBAPP_URL: "https://script.google.com/macros/s/AKfycbygQGBFDfoV22lEIznj7wKdCfFF8Fzhzk_HPDMn6bjaRqOWtGGntv9t6Oq_Kk15xCM/exec"
 };
+
+// TODO: change this before real use — gates who can (re)record the standard hand poses.
+// You can later wire this to a password cell in a Config sheet like your other HRD apps.
+const ADMIN_PASSWORD = "hrd2026";
+
+const MATCH_THRESHOLD = 0.10;   // how close a live pose must be to the recorded standard to count
+const CALIB_COUNTDOWN_S = 3;
+const CALIB_CAPTURE_MS = 4000;  // how long a sample capture window lasts per step
 
 /* =========================================================
    STEP DEFINITIONS (WHO 7-Step Handwashing)
    ========================================================= */
 const STEPS = [
-  { title:"ฝ่ามือถูฝ่ามือ", desc:"ประกบฝ่ามือทั้งสองข้างเข้าหากัน แล้วถูวนไปมา", pose:"🤲", duration:5, type:"palmToPalm" },
-  { title:"ฝ่ามือถูหลังมือ (สลับข้าง)", desc:"นำฝ่ามือขวาถูหลังมือซ้าย สอดนิ้วถู แล้วสลับข้าง", pose:"🙌", duration:6, type:"palmToBack" },
-  { title:"ฝ่ามือถูฝ่ามือ สอดนิ้วถู", desc:"ประกบฝ่ามือ สอดนิ้วมือทั้งสองข้างเข้าหากัน แล้วถูไปมา", pose:"🤝", duration:6, type:"interlaced" },
-  { title:"หลังนิ้วมือถูฝ่ามือ", desc:"งอนิ้วมือ ใช้หลังนิ้วถูฝ่ามืออีกข้าง สลับกันทั้งสองข้าง", pose:"✊➡️🖐️", duration:6, type:"backOfFingers" },
-  { title:"ถูนิ้วหัวแม่มือหมุนรอบ", desc:"กำนิ้วหัวแม่มือขวาด้วยฝ่ามือซ้าย ถูหมุนรอบ แล้วสลับข้าง", pose:"👍🤛", duration:6, type:"thumbRotate" },
-  { title:"ถูปลายนิ้วหมุนบนฝ่ามือ", desc:"รวมปลายนิ้วมือขวา ถูหมุนวนบนฝ่ามือซ้าย แล้วสลับข้าง", pose:"🤏✋", duration:6, type:"fingertipRotate" },
-  { title:"ล้างข้อมือและล้างน้ำออก", desc:"ถูรอบข้อมือทั้งสองข้าง จากนั้นล้างสบู่ออกด้วยน้ำสะอาด", pose:"💧🖐️💧", duration:5, type:"rinse" },
+  { title:"ฝ่ามือถูฝ่ามือ", desc:"ประกบฝ่ามือทั้งสองข้างเข้าหากัน แล้วถูวนไปมา", pose:"🤲", duration:10, type:"palmToPalm" },
+  { title:"ฝ่ามือถูหลังมือ (สลับข้าง)", desc:"นำฝ่ามือขวาถูหลังมือซ้าย สอดนิ้วถู แล้วสลับข้าง", pose:"🙌", duration:10, type:"palmToBack" },
+  { title:"ฝ่ามือถูฝ่ามือ สอดนิ้วถู", desc:"ประกบฝ่ามือ สอดนิ้วมือทั้งสองข้างเข้าหากัน แล้วถูไปมา", pose:"🤝", duration:10, type:"interlaced" },
+  { title:"หลังนิ้วมือถูฝ่ามือ", desc:"งอนิ้วมือ ใช้หลังนิ้วถูฝ่ามืออีกข้าง สลับกันทั้งสองข้าง", pose:"✊➡️🖐️", duration:10, type:"backOfFingers" },
+  { title:"ถูนิ้วหัวแม่มือหมุนรอบ", desc:"กำนิ้วหัวแม่มือขวาด้วยฝ่ามือซ้าย ถูหมุนรอบ แล้วสลับข้าง", pose:"👍🤛", duration:10, type:"thumbRotate" },
+  { title:"ถูปลายนิ้วหมุนบนฝ่ามือ", desc:"รวมปลายนิ้วมือขวา ถูหมุนวนบนฝ่ามือซ้าย แล้วสลับข้าง", pose:"🤏✋", duration:10, type:"fingertipRotate" },
+  { title:"ล้างข้อมือและล้างน้ำออก", desc:"ถูรอบข้อมือทั้งสองข้าง จากนั้นล้างสบู่ออกด้วยน้ำสะอาด", pose:"💧🖐️💧", duration:10, type:"rinse" },
 ];
 
 /* =========================================================
@@ -347,7 +367,17 @@ let prevLandmarks = null; // for motion energy
 let landmarksNow = [];
 let gameRunning = false;
 
-const REQUIRED_GOOD_MS = 3200; // sustained "good" contact+motion time needed per step
+let appMode = 'exam';          // 'exam' | 'calibrate'
+let STANDARD = null;           // array of 7 reference pose vectors loaded from the server, or null
+let referenceVectors = [];     // vectors captured while in calibrate mode
+let calibState = 'idle';       // 'idle' | 'countdown' | 'capturing' | 'done'
+let calibSamples = [];
+
+const DEFAULT_STEP_MS = 6000;   // fallback if a step has no duration set
+let stepRequiredMs = DEFAULT_STEP_MS; // set per-step in startStep() from STEPS[i].duration
+const REPEAT_BLOCK_DIST = 0.055; // how different the hand pose must be from the previous completed step
+let lastPoseVector = null;   // snapshot of the pose that finished the previous step
+let currentPoseVector = null; // this frame's pose, saved on completion
 
 /* =========================================================
    DOM refs
@@ -379,7 +409,7 @@ function updateDroplets(){
     const fillPath = d.querySelector('.fill');
     if(i < currentStep){ fillPath.style.clipPath = 'inset(0 0 0 0)'; }
     else if(i === currentStep){
-      const pct = Math.min(1, stepGoodMs / REQUIRED_GOOD_MS);
+      const pct = Math.min(1, stepGoodMs / stepRequiredMs);
       fillPath.style.clipPath = `inset(${(1-pct)*100}% 0 0 0)`;
     } else { fillPath.style.clipPath = 'inset(100% 0 0 0)'; }
   });
@@ -393,11 +423,59 @@ el('startBtn').addEventListener('click', async () => {
     el('setupHint').innerHTML = '<b style="color:#E14B4B">กรุณากรอกชื่อและรหัสพนักงานก่อนเริ่ม</b>';
     return;
   }
+  appMode = 'exam';
+  el('startBtn').disabled = true;
+  el('startBtn').textContent = 'กำลังโหลดมาตรฐาน...';
+  await loadStandard();
+  el('startBtn').disabled = false;
+  el('startBtn').textContent = 'เริ่มเกม & เปิดกล้อง';
+
   setupScreen.style.display = 'none';
   gameScreen.style.display = 'block';
+  el('manualBtn').style.display = 'inline-flex';
+  el('calibCaptureBtn').style.display = 'none';
   buildDroplets();
   await initCamera();
 });
+
+el('adminModeBtn').addEventListener('click', () => {
+  const field = el('adminPwField');
+  field.style.display = field.style.display === 'none' ? 'block' : 'none';
+});
+
+el('adminPwSubmit').addEventListener('click', async () => {
+  if(el('adminPwInput').value !== ADMIN_PASSWORD){
+    el('adminPwInput').style.borderColor = '#E14B4B';
+    el('adminPwInput').value = '';
+    el('adminPwInput').placeholder = 'รหัสผ่านไม่ถูกต้อง ลองใหม่';
+    return;
+  }
+  appMode = 'calibrate';
+  referenceVectors = new Array(STEPS.length).fill(null);
+  calibState = 'idle';
+  calibSamples = [];
+
+  setupScreen.style.display = 'none';
+  gameScreen.style.display = 'block';
+  el('manualBtn').style.display = 'none';
+  el('calibCaptureBtn').style.display = 'inline-flex';
+  el('calibCaptureBtn').disabled = false;
+  el('calibCaptureBtn').textContent = 'เริ่มจับท่านี้ (นับถอยหลัง 3 วิ)';
+  buildDroplets();
+  await initCamera();
+});
+
+async function loadStandard(){
+  STANDARD = null;
+  if(!CONFIG.WEBAPP_URL || CONFIG.WEBAPP_URL.includes('PASTE_YOUR')) return;
+  try{
+    const res = await fetch(CONFIG.WEBAPP_URL + '?action=getStandard');
+    const data = await res.json();
+    if(data.status === 'success' && Array.isArray(data.vectors) && data.vectors.length === STEPS.length){
+      STANDARD = data.vectors;
+    }
+  } catch(err){ STANDARD = null; }
+}
 
 /* =========================================================
    Camera + MediaPipe init
@@ -419,11 +497,18 @@ async function initCamera(){
   await camera.start();
 
   el('camBadge').classList.add('ok');
-  el('camBadgeText').textContent = 'กล้องพร้อมใช้งาน';
+  el('camBadgeText').textContent = 'กล้องพร้อมใช้งาน' + (appMode==='exam' ? (STANDARD ? ' • ใช้มาตรฐานที่ตั้งค่าไว้' : ' • ใช้เกณฑ์เริ่มต้น (ยังไม่มีมาตรฐาน)') : ' • โหมดตั้งค่ามาตรฐาน');
 
   sessionStartTime = performance.now();
   startStep(0);
-  gameRunning = true;
+
+  if(appMode === 'exam'){
+    gameRunning = true;
+  } else {
+    gameRunning = false;
+    calibState = 'idle';
+    el('detectText').textContent = 'กดปุ่มด้านล่างเมื่อพร้อมทำท่านี้';
+  }
 }
 
 function resizeOverlay(){
@@ -470,42 +555,112 @@ function motionEnergy(curLm, prevLm){
   }
   return total/curLm.length;
 }
+// average distance from one hand's index/middle/ring/pinky tips to a target palm center
+// (excludes thumb — used to isolate "fingertips clustered on palm" from "thumb tucked in palm")
+function fingertipsToPalm(lm, targetPc){
+  const tips=[8,12,16,20];
+  let total=0;
+  tips.forEach(i=>{ total+=dist(lm[i], targetPc); });
+  return total/tips.length;
+}
 
-/* Classify current frame against the active step's target pose.
-   Returns true if features are "good enough" to count toward progress. */
-function evaluateStep(type, handsLm, motion){
-  if(handsLm.length < 2) return false;
+/* A compact numeric fingerprint of the current two-hand pose.
+   Used both for per-step classification AND to make sure the person
+   actually changed their hand position between consecutive steps
+   (prevents "hold one pose, pass all 7 steps"). */
+function poseVector(handsLm){
   const [A,B] = handsLm;
   const pcA = palmCenter(A), pcB = palmCenter(B);
   const palmDist = dist(pcA,pcB);
   const tipProx = fingertipProximity(A,B);
   const curlA = fingerCurl(A), curlB = fingerCurl(B);
+  const thumbMin = Math.min(dist(A[4],pcB), dist(B[4],pcA));
+  const clusterMin = Math.min(fingertipsToPalm(A,pcB), fingertipsToPalm(B,pcA));
+  return [palmDist, tipProx, curlA, curlB, thumbMin, clusterMin];
+}
+function poseVectorDist(v1, v2){
+  if(!v1 || !v2) return Infinity;
+  let s=0;
+  for(let i=0;i<v1.length;i++){ s += (v1[i]-v2[i])**2; }
+  return Math.sqrt(s);
+}
+
+/* Classify current frame against the active step's target pose.
+   Returns true if features are "good enough" to count toward progress. */
+function evaluateStep(type, handsLm, motion, vec){
+  if(handsLm.length < 2) return {good:false, reason:'nohands'};
+  const [A,B] = handsLm;
+  const pcA = palmCenter(A), pcB = palmCenter(B);
+  const [palmDist, tipProx, curlA, curlB, thumbMin, clusterMin] = vec;
   const moving = motion > 0.004; // rubbing motion threshold
 
   const handsClose = palmDist < 0.22;
-  const handsTouching = palmDist < 0.14;
+  const handsTouching = palmDist < 0.13;
+  const extendedA = curlA > 0.20, extendedB = curlB > 0.20;
+  const curledA = curlA < 0.15, curledB = curlB < 0.15;
 
+  let poseOk = false;
   switch(type){
     case 'palmToPalm':
-      return handsTouching && moving;
+      // both hands open/flat, pressed together, fingers loosely aligned (not deeply laced)
+      poseOk = handsTouching && extendedA && extendedB && tipProx > 0.045 && tipProx < 0.16;
+      break;
     case 'palmToBack':
-      return handsClose && moving && tipProx < 0.14;
+      // fingers overlapping across the two hands, closer contact than plain palm-to-palm
+      poseOk = handsClose && tipProx < 0.11 && (curlA < 0.22 || curlB < 0.22);
+      break;
     case 'interlaced':
-      return handsTouching && tipProx < 0.09 && moving;
+      // fingers deeply laced together — smallest fingertip gap of all steps
+      poseOk = handsTouching && tipProx < 0.075;
+      break;
     case 'backOfFingers':
-      return handsClose && moving && (curlA < 0.7 || curlB < 0.7 || tipProx < 0.12);
-    case 'thumbRotate': {
-      const thumbA = A[4], thumbB = B[4];
-      const thumbNearPalm = dist(thumbA, pcB) < 0.13 || dist(thumbB, pcA) < 0.13;
-      return thumbNearPalm && moving;
-    }
+      // one hand curled into the other's palm, knuckles/back leading
+      poseOk = handsClose && (curledA || curledB) && tipProx < 0.16;
+      break;
+    case 'thumbRotate':
+      // a thumb is enclosed deep inside the other palm, other fingertips stay away
+      poseOk = thumbMin < 0.10 && clusterMin > 0.11;
+      break;
     case 'fingertipRotate':
-      return handsClose && tipProx < 0.15 && moving;
+      // the four fingertips (not the thumb) are clustered on the opposite palm
+      poseOk = clusterMin < 0.10 && thumbMin > 0.10;
+      break;
     case 'rinse':
-      return handsClose && moving;
+      poseOk = handsClose;
+      break;
     default:
-      return handsClose && moving;
+      poseOk = handsClose;
   }
+
+  if(!poseOk) return {good:false, reason:'pose'};
+  if(!moving) return {good:false, reason:'still'};
+
+  // must look meaningfully different from the pose that closed the previous step
+  if(lastPoseVector && poseVectorDist(vec, lastPoseVector) < REPEAT_BLOCK_DIST){
+    return {good:false, reason:'repeat'};
+  }
+  return {good:true, reason:'ok'};
+}
+
+/* Preferred evaluator once an admin has recorded a standard: compare the live
+   pose against all 7 recorded reference poses. It only counts as "good" if the
+   live pose is both close enough to AND closer to the current step's reference
+   than to any other step's reference — this is what actually prevents one held
+   pose from satisfying every step. */
+function evaluateStepByStandard(stepIdx, vec, motion){
+  const dists = STANDARD.map(ref => poseVectorDist(vec, ref));
+  const targetDist = dists[stepIdx];
+  const minDist = Math.min(...dists);
+  const withinThreshold = targetDist < MATCH_THRESHOLD;
+  const isClosestToTarget = (targetDist - minDist) < 0.01; // small tie tolerance
+
+  if(!withinThreshold) return {good:false, reason:'pose'};
+  if(!isClosestToTarget) return {good:false, reason:'wrongstep'};
+  if(motion <= 0.004) return {good:false, reason:'still'};
+  if(lastPoseVector && poseVectorDist(vec, lastPoseVector) < REPEAT_BLOCK_DIST){
+    return {good:false, reason:'repeat'};
+  }
+  return {good:true, reason:'ok'};
 }
 
 /* =========================================================
@@ -534,31 +689,53 @@ function onResults(results){
 
   el('camHint').style.display = twoHands ? 'none' : 'block';
 
-  if(!gameRunning){ return; }
-
   let motion = 0;
   if(twoHands && prevLandmarks && prevLandmarks.length>=2){
     motion = (motionEnergy(handsLm[0], prevLandmarks[0]) + motionEnergy(handsLm[1], prevLandmarks[1]))/2;
   }
   prevLandmarks = twoHands ? handsLm.map(l=>l.map(p=>({x:p.x,y:p.y,z:p.z}))) : prevLandmarks;
 
+  /* ---------- Calibration mode: just collect samples while capturing ---------- */
+  if(appMode === 'calibrate'){
+    if(calibState === 'capturing' && twoHands){
+      calibSamples.push(poseVector(handsLm));
+    }
+    return;
+  }
+
+  /* ---------- Exam mode ---------- */
+  if(!gameRunning){ return; }
+
   const stepType = STEPS[currentStep].type;
-  const good = twoHands ? evaluateStep(stepType, handsLm, motion) : false;
+  let evalResult = {good:false, reason:'nohands'};
+  if(twoHands){
+    currentPoseVector = poseVector(handsLm);
+    evalResult = STANDARD
+      ? evaluateStepByStandard(currentStep, currentPoseVector, motion)
+      : evaluateStep(stepType, handsLm, motion, currentPoseVector);
+  }
 
   const statusBox = el('detectStatus');
-  if(good){
+  const MSG = {
+    nohands: 'กรุณายกมือทั้งสองข้างเข้ากรอบ',
+    pose: 'ปรับท่ามือให้ตรงกับตัวอย่าง',
+    still: 'ถูมือต่อไป (ต้องมีการเคลื่อนไหว)',
+    repeat: 'ท่ามือเหมือนขั้นตอนก่อนหน้าเกินไป ลองเปลี่ยนท่าตามภาพ',
+    wrongstep: 'ท่านี้คล้ายขั้นตอนอื่นมากกว่า ลองปรับท่าตามตัวอย่าง',
+    ok: 'ตรวจจับได้ดี — ทำต่อไป'
+  };
+  if(evalResult.good){
     stepGoodMs += dt;
     statusBox.classList.add('good');
-    el('detectText').textContent = 'ตรวจจับได้ดี — ทำต่อไป';
   } else {
     statusBox.classList.remove('good');
-    el('detectText').textContent = twoHands ? 'ปรับท่ามือให้ตรงกับตัวอย่าง' : 'กรุณายกมือทั้งสองข้างเข้ากรอบ';
   }
+  el('detectText').textContent = MSG[evalResult.reason];
 
   updateTimerRing();
   updateDroplets();
 
-  if(stepGoodMs >= REQUIRED_GOOD_MS){
+  if(stepGoodMs >= stepRequiredMs){
     completeStep('auto');
   }
 }
@@ -571,6 +748,7 @@ function startStep(i){
   stepGoodMs = 0;
   stepStartTime = performance.now();
   const s = STEPS[i];
+  stepRequiredMs = (s.duration || DEFAULT_STEP_MS/1000) * 1000;
   el('stepEyebrow').textContent = `ขั้นตอนที่ ${i+1} / ${STEPS.length}`;
   el('stepPose').textContent = s.pose;
   el('stepTitle').textContent = s.title;
@@ -579,17 +757,19 @@ function startStep(i){
 }
 
 function updateTimerRing(){
-  const s = STEPS[currentStep];
-  const pct = Math.min(1, stepGoodMs / REQUIRED_GOOD_MS);
+  const pct = Math.min(1, stepGoodMs / stepRequiredMs);
   const circumference = 144.5;
   el('ringProg').setAttribute('stroke-dashoffset', circumference * (1-pct));
-  const secsLeft = Math.max(0, Math.ceil((REQUIRED_GOOD_MS - stepGoodMs)/1000));
+  const secsLeft = Math.max(0, Math.ceil((stepRequiredMs - stepGoodMs)/1000));
   el('ringNum').textContent = secsLeft;
 }
 
 function completeStep(method){
   const elapsedMs = performance.now() - stepStartTime;
   stepResults.push({ title: STEPS[currentStep].title, durationMs: Math.round(elapsedMs), method });
+
+  // remember this pose so the next step can require a visibly different one
+  lastPoseVector = (method === 'auto' && currentPoseVector) ? currentPoseVector : null;
 
   if(currentStep < STEPS.length-1){
     startStep(currentStep+1);
@@ -603,6 +783,102 @@ el('manualBtn').addEventListener('click', () => {
   completeStep('manual');
 });
 
+el('calibCaptureBtn').addEventListener('click', startCalibCapture);
+
+function startCalibCapture(){
+  const btn = el('calibCaptureBtn');
+  btn.disabled = true;
+  calibState = 'countdown';
+  let countdown = CALIB_COUNTDOWN_S;
+  el('detectText').textContent = `เตรียมพร้อม... ${countdown}`;
+  const countdownTimer = setInterval(() => {
+    countdown--;
+    if(countdown <= 0){
+      clearInterval(countdownTimer);
+      beginCalibCapture();
+    } else {
+      el('detectText').textContent = `เตรียมพร้อม... ${countdown}`;
+    }
+  }, 1000);
+}
+
+function beginCalibCapture(){
+  calibState = 'capturing';
+  calibSamples = [];
+  const startT = performance.now();
+  el('detectText').textContent = 'กำลังจับท่า... ทำท่านี้ค้างไว้';
+  const captureTimer = setInterval(() => {
+    const elapsed = performance.now() - startT;
+    const pct = Math.min(1, elapsed / CALIB_CAPTURE_MS);
+    el('ringProg').setAttribute('stroke-dashoffset', 144.5 * (1-pct));
+    el('ringNum').textContent = Math.ceil((CALIB_CAPTURE_MS - elapsed)/1000);
+    if(elapsed >= CALIB_CAPTURE_MS){
+      clearInterval(captureTimer);
+      finishCalibCapture();
+    }
+  }, 100);
+}
+
+function finishCalibCapture(){
+  calibState = 'done';
+  const btn = el('calibCaptureBtn');
+  if(calibSamples.length < 8){
+    el('detectText').textContent = 'ตรวจจับมือได้ไม่พอ กรุณากดปุ่มแล้วลองอีกครั้ง';
+    btn.disabled = false;
+    btn.textContent = 'ลองจับท่านี้อีกครั้ง';
+    return;
+  }
+  const dims = calibSamples[0].length;
+  const avg = new Array(dims).fill(0);
+  calibSamples.forEach(v => { for(let i=0;i<dims;i++) avg[i]+=v[i]; });
+  for(let i=0;i<dims;i++) avg[i] /= calibSamples.length;
+
+  referenceVectors[currentStep] = avg;
+  markDropletFilled(currentStep);
+
+  if(currentStep < STEPS.length-1){
+    setTimeout(() => {
+      startStep(currentStep+1);
+      calibState = 'idle';
+      btn.disabled = false;
+      btn.textContent = 'เริ่มจับท่านี้ (นับถอยหลัง 3 วิ)';
+      el('detectText').textContent = 'กดปุ่มด้านล่างเมื่อพร้อมทำท่านี้';
+    }, 900);
+  } else {
+    setTimeout(finishCalibration, 900);
+  }
+}
+
+function markDropletFilled(i){
+  const d = el('drop'+i);
+  if(!d) return;
+  d.classList.add('active');
+  d.querySelector('.fill').style.clipPath = 'inset(0 0 0 0)';
+}
+
+function finishCalibration(){
+  if(camera) camera.stop();
+  gameScreen.style.display = 'none';
+  resultScreen.style.display = 'block';
+
+  document.querySelector('.result-stats').style.display = 'none';
+  el('resultBadge').classList.remove('fail');
+  el('resultBadge').textContent = '✓';
+  el('resultTitle').textContent = 'บันทึกท่ามาตรฐานครบ 7 ขั้นตอนแล้ว';
+  el('resultSub').textContent = 'ตรวจสอบรายการด้านล่าง แล้วกดบันทึกเป็นมาตรฐานสำหรับใช้ตรวจจับพนักงานทุกคน';
+
+  const list = el('stepList');
+  list.innerHTML = '';
+  STEPS.forEach((s,i) => {
+    const li = document.createElement('li');
+    li.innerHTML = `<b>${i+1}. ${s.title}</b><span class="tag auto">บันทึกแล้ว</span>`;
+    list.appendChild(li);
+  });
+
+  el('saveBtn').textContent = 'บันทึกเป็นมาตรฐาน';
+  el('retryBtn').textContent = 'บันทึกท่าใหม่อีกครั้ง';
+}
+
 /* =========================================================
    Finish game -> results
    ========================================================= */
@@ -612,6 +888,7 @@ function finishGame(){
 
   gameScreen.style.display = 'none';
   resultScreen.style.display = 'block';
+  document.querySelector('.result-stats').style.display = '';
 
   const totalMs = performance.now() - sessionStartTime;
   const totalSec = Math.round(totalMs/1000);
@@ -654,6 +931,10 @@ function finishGame(){
    Save to Google Sheet
    ========================================================= */
 el('saveBtn').addEventListener('click', async () => {
+  if(appMode === 'calibrate'){
+    await saveStandardToServer();
+    return;
+  }
   const statusBox = el('saveStatus');
   if(!CONFIG.WEBAPP_URL || CONFIG.WEBAPP_URL.includes('PASTE_YOUR')){
     statusBox.textContent = 'ยังไม่ได้ตั้งค่า Web App URL ในไฟล์ index.html (ดูใน Code.gs)';
@@ -684,11 +965,59 @@ el('saveBtn').addEventListener('click', async () => {
   }
 });
 
+async function saveStandardToServer(){
+  const statusBox = el('saveStatus');
+  if(!CONFIG.WEBAPP_URL || CONFIG.WEBAPP_URL.includes('PASTE_YOUR')){
+    statusBox.textContent = 'ยังไม่ได้ตั้งค่า Web App URL ในไฟล์ index.html (ดูใน Code.gs)';
+    statusBox.className = 'err';
+    return;
+  }
+  if(referenceVectors.some(v => !v)){
+    statusBox.textContent = 'ยังบันทึกไม่ครบ 7 ขั้นตอน';
+    statusBox.className = 'err';
+    return;
+  }
+  statusBox.textContent = 'กำลังบันทึกมาตรฐาน...';
+  statusBox.className = '';
+  el('saveBtn').disabled = true;
+  try{
+    const res = await fetch(CONFIG.WEBAPP_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action:'saveStandard', vectors: referenceVectors, timestamp: new Date().toISOString() })
+    });
+    const data = await res.json();
+    if(data.status === 'success'){
+      statusBox.textContent = 'บันทึกมาตรฐานสำเร็จ พนักงานสามารถเริ่มทดสอบได้แล้ว';
+      statusBox.className = 'ok';
+      STANDARD = referenceVectors.slice();
+    } else {
+      throw new Error(data.message || 'unknown error');
+    }
+  } catch(err){
+    statusBox.textContent = 'บันทึกไม่สำเร็จ: ' + err.message;
+    statusBox.className = 'err';
+  } finally {
+    el('saveBtn').disabled = false;
+  }
+}
+
 el('retryBtn').addEventListener('click', () => {
   stepResults = [];
   prevLandmarks = null;
+  lastPoseVector = null;
+  currentPoseVector = null;
+  referenceVectors = [];
+  calibState = 'idle';
+  calibSamples = [];
+  appMode = 'exam';
+  document.querySelector('.result-stats').style.display = '';
+  el('saveBtn').textContent = 'บันทึกผลลง Google Sheet';
+  el('retryBtn').textContent = 'เล่นอีกครั้ง';
   resultScreen.style.display = 'none';
   setupScreen.style.display = 'block';
+  el('adminPwField').style.display = 'none';
+  el('adminPwInput').value = '';
 });
 </script>
 </body>
